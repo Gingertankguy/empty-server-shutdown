@@ -16,10 +16,10 @@
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"net.rtmfb.emptyservershutdown.EmptyServerShutdown"
+			"net.Gingertankguy.emptyservershutdown.EmptyServerShutdown"
 		],
 		"fabric-datagen": [
-			"net.rtmfb.emptyservershutdown.EmptyServerShutdownDataGenerator"
+			"net.Gingertankguy.emptyservershutdown.EmptyServerShutdownDataGenerator"
 		]
 	},
 	"mixins": [
