@@ -1,4 +1,4 @@
-package net.rtmfb.emptyservershutdown;
+package net.Gingertankguy.emptyservershutdown;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
