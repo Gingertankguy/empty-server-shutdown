@@ -4,8 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
 
 public class EmptyServerShutdown implements ModInitializer {
@@ -19,21 +20,31 @@ public class EmptyServerShutdown implements ModInitializer {
 	public void onInitialize() {
 		emptySince = -1;
 		LOGGER.info("Empty Server Stopper Activated!");
-
+		
 		ConfigManager.load();
+		int seconds = ConfigManager.config.shutdownTimeoutSeconds;
 
-		timeoutTicks = ConfigManager.config.shutdownTimeoutSeconds * 20L;
-		LOGGER.info("Shutdown timeout set to {} seconds.", ConfigManager.config.shutdownTimeoutSeconds);
+		timeoutTicks = seconds * 20L;
+		LOGGER.info("Shutdown timeout set to {} seconds.", seconds);
+
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			if (server.getPlayerManager().getPlayerList().isEmpty()) {
+				emptySince = server.getTicks();
+				LOGGER.info("Server is empty, starting {} second shutdown timer.", seconds);
+			} else {
+				emptySince = -1;
+			}
+		});
 
 		ServerPlayConnectionEvents.JOIN.register((handler, server, sender) -> {
 			emptySince = -1;
-          	LOGGER.info("Player joined — shutdown timer reset.");
+          	LOGGER.info("Player joined, shutdown timer reset.");
         	});
 
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
           	if (server.getPlayerManager().getPlayerList().isEmpty()) {
                 	emptySince = server.getTicks();
-                	LOGGER.info("Server is empty — starting shutdown timer.");
+                	LOGGER.info("Server is empty, starting {} second shutdown timer.", seconds);
           	}
         	});
 
@@ -45,8 +56,16 @@ public class EmptyServerShutdown implements ModInitializer {
 
      	long elapsed = server.getTicks() - emptySince;
      	if (elapsed >= timeoutTicks) {
-          	LOGGER.info("Server empty for {} ticks — shutting down.", elapsed);
-     		server.shutdown();
+          	LOGGER.info("Server empty for {} seconds; shutting down.", (elapsed / 20));
+     		if (!(server.isStopped() || server.isStopping())) {
+				server.execute(() -> {
+					try {
+						server.shutdown();
+					} catch (Exception e) {
+						LOGGER.error("Error shutting down server", e);
+					}
+				});
+			}
      	}
     	}
 }
