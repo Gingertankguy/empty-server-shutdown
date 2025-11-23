@@ -1,4 +1,4 @@
-package net.rtmfb.emptyservershutdown;
+package net.Gingertankguy.emptyservershutdown;
 
 public class EmptyServerShutdownConfig {
      public int shutdownTimeoutSeconds = 600;
