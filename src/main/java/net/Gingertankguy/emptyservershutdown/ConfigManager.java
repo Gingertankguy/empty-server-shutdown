@@ -1,4 +1,4 @@
-package net.rtmfb.emptyservershutdown;
+package net.Gingertankguy.emptyservershutdown;
 
 import java.io.File;
 import java.io.FileReader;
