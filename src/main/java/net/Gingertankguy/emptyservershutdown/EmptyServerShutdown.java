@@ -36,36 +36,36 @@ public class EmptyServerShutdown implements ModInitializer {
 			}
 		});
 
-		ServerPlayConnectionEvents.JOIN.register((handler, server, sender) -> {
-			emptySince = -1;
-          	LOGGER.info("Player joined, shutdown timer reset.");
-        	});
-
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-          	if (server.getPlayerManager().getPlayerList().isEmpty()) {
-                	emptySince = server.getTicks();
-                	LOGGER.info("Server is empty, starting {} second shutdown timer.", seconds);
-          	}
-        	});
-
 		ServerTickEvents.END_SERVER_TICK.register(server -> tickCheck(server));
 	}
 
 	private static void tickCheck(MinecraftServer server) {
-     	if (emptySince < 0) return;
+     	int playerCount = server.getPlayerManager().getPlayerList().size();
 
-     	long elapsed = server.getTicks() - emptySince;
-     	if (elapsed >= timeoutTicks) {
-          	LOGGER.info("Server empty for {} seconds; shutting down.", (elapsed / 20));
-     		if (!(server.isStopped() || server.isStopping())) {
-				server.execute(() -> {
-					try {
-						server.shutdown();
-					} catch (Exception e) {
-						LOGGER.error("Error shutting down server", e);
-					}
-				});
+		if (playerCount == 0) {
+			if (emptySince < 0) {
+				emptySince = server.getTicks();
+				LOGGER.info("Server is empty, starting shutdown timer.");
 			}
-     	}
+
+			long elapsed = server.getTicks() - emptySince;
+			if (elapsed >= timeoutTicks) {
+				LOGGER.info("Server empty for {} seconds; shutting down.", (elapsed / 20));
+				if (!(server.isStopped() || server.isStopping())) {
+					server.execute(() -> {
+						try {
+							server.shutdown();
+						} catch (Exception e) {
+							LOGGER.error("Error shutting down server", e);
+						}
+					});
+				}
+			}
+		} else {
+			if (emptySince >= 0) {
+				LOGGER.info("Player joined, shutdown timer reset.");
+				emptySince = -1;
+			}
+		}
     	}
 }
