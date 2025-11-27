@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
 
@@ -13,59 +12,69 @@ public class EmptyServerShutdown implements ModInitializer {
 	public static final String MOD_ID = "empty-server-shutdown";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-	private static long timeoutTicks = 20 * 900;
+	private static long timeoutMS = 1000 * 600;
 	private static long emptySince = -1;
 
 	@Override
 	public void onInitialize() {
 		emptySince = -1;
-		LOGGER.info("Empty Server Stopper Activated!");
-		
 		ConfigManager.load();
+		LOGGER.info("[EmptyServerShutdown] Empty Server Stopper Activated!");
+		
 		int seconds = ConfigManager.config.shutdownTimeoutSeconds;
 
-		timeoutTicks = seconds * 20L;
-		LOGGER.info("Shutdown timeout set to {} seconds.", seconds);
+		timeoutMS = seconds * 1000L;
+		LOGGER.info("[EmptyServerShutdown] Shutdown timeout set to {} seconds.", seconds);
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			startBackgroundChecker(server);
 			if (server.getPlayerManager().getPlayerList().isEmpty()) {
-				emptySince = server.getTicks();
-				LOGGER.info("Server is empty, starting {} second shutdown timer.", seconds);
-			} else {
-				emptySince = -1;
+				emptySince = System.currentTimeMillis();
+				LOGGER.info("[EmptyServerShutdown] Server is empty; starting shutdown timer.");
 			}
 		});
 
-		ServerTickEvents.END_SERVER_TICK.register(server -> tickCheck(server));
+		ServerPlayConnectionEvents.JOIN.register((handler, server, sender) -> {
+			emptySince = -1;
+			LOGGER.info("[EmptyServerShutdown] Player joined, shutdown timer reset.");
+		});
+
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			if (server.getPlayerManager().getPlayerList().isEmpty()) {
+				emptySince = System.currentTimeMillis();
+				LOGGER.info("[EmptyServerShutdown] Server is empty; starting shutdown timer.");
+			}
+		});
 	}
 
-	private static void tickCheck(MinecraftServer server) {
-     	int playerCount = server.getPlayerManager().getPlayerList().size();
+	private void startBackgroundChecker(MinecraftServer server) {
+		Thread watcher = new Thread(() -> {
+			while (true) {
+				try {
+					Thread.sleep(5000);
 
-		if (playerCount == 0) {
-			if (emptySince < 0) {
-				emptySince = server.getTicks();
-				LOGGER.info("Server is empty, starting shutdown timer.");
-			}
+					if (emptySince < 0)
+						continue;
 
-			long elapsed = server.getTicks() - emptySince;
-			if (elapsed >= timeoutTicks) {
-				LOGGER.info("Server empty for {} seconds; shutting down.", (elapsed / 20));
-				if (!(server.isStopped() || server.isStopping())) {
-					server.execute(() -> {
-						try {
-							server.shutdown();
-						} catch (Exception e) {
-							LOGGER.error("Error shutting down server", e);
-						}
-					});
+					long elapsed = System.currentTimeMillis() - emptySince;
+					if (elapsed >= timeoutMS) {
+						LOGGER.info("[EmptyServerShutdown] Server empty for {} seconds; shutting down.", (elapsed / 1000));
+						server.execute(() -> {
+							try {
+								server.stop(false);
+							} catch (Exception e) {
+								EmptyServerShutdown.LOGGER.error("Error during shutdown", e);
+							}
+						});
+						break;
+					}
+				} catch (Exception e) {
+					LOGGER.error("[EmptyServerShutdown] Shutdown checker error", e);
 				}
 			}
-		} else {
-			if (emptySince >= 0) {
-				LOGGER.info("Player joined, shutdown timer reset.");
-				emptySince = -1;
-			}
-		}
-    	}
+		}, "EmptyShutdownWatcher");
+
+		watcher.setDaemon(true);
+		watcher.start();
+	}
 }
